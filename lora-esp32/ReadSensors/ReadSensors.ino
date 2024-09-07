@@ -5,26 +5,27 @@
 #include "LoRaWan_APP.h"
 #include "ArduinoJson.h"
 #include "DHT.h"
+#include "esp_sleep.h"
 
 /* OTAA para*/
-uint8_t devEui[] = { 0xc7, 0xe9, 0x19, 0x7d, 0x15, 0x68, 0x8c, 0x9d }; // Marvin Device	
-//uint8_t devEui[] = { 0xa8, 0xb4, 0x3a, 0x20, 0x1e, 0x0f, 0xd1, 0xf6 }; // heltec2 
+//uint8_t devEui[] = { 0xc7, 0xe9, 0x19, 0x7d, 0x15, 0x68, 0x8c, 0x9d }; // Marvin Device
+uint8_t devEui[] = { 0xa8, 0xb4, 0x3a, 0x20, 0x1e, 0x0f, 0xd1, 0xf6 };  // heltec2
 uint8_t appEui[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 uint8_t appKey[] = { 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x66, 0x01 };
 
 /* ABP para*/
-uint8_t nwkSKey[] = { 0x15, 0xb1, 0xd0, 0xef, 0xa4, 0x63, 0xdf, 0xbe, 0x3d, 0x11, 0x18, 0x1e, 0x1e, 0xc7, 0xda,0x85 };
-uint8_t appSKey[] = { 0xd7, 0x2c, 0x78, 0x75, 0x8c, 0xdc, 0xca, 0xbf, 0x55, 0xee, 0x4a, 0x77, 0x8d, 0x16, 0xef,0x67 };
-uint32_t devAddr =  ( uint32_t )0x007e6ae1;
+uint8_t nwkSKey[] = { 0x15, 0xb1, 0xd0, 0xef, 0xa4, 0x63, 0xdf, 0xbe, 0x3d, 0x11, 0x18, 0x1e, 0x1e, 0xc7, 0xda, 0x85 };
+uint8_t appSKey[] = { 0xd7, 0x2c, 0x78, 0x75, 0x8c, 0xdc, 0xca, 0xbf, 0x55, 0xee, 0x4a, 0x77, 0x8d, 0x16, 0xef, 0x67 };
+uint32_t devAddr = (uint32_t)0x007e6ae1;
 
 /*LoraWan channelsmask*/
-uint16_t userChannelsMask[6]={ 0x00FF,0x0000,0x0000,0x0000,0x0000,0x0000 };
+uint16_t userChannelsMask[6] = { 0x00FF, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000 };
 
 /*LoraWan region, select in arduino IDE tools*/
 LoRaMacRegion_t loraWanRegion = ACTIVE_REGION;
 
 /*LoraWan Class, Class A and Class C are supported*/
-DeviceClass_t  loraWanClass = CLASS_A;
+DeviceClass_t loraWanClass = CLASS_A;
 
 /*the application data transmission duty cycle.  value in [ms].*/
 uint32_t appTxDutyCycle = 15000;
@@ -69,125 +70,130 @@ uint8_t confirmedNbTrials = 4;
 DHT dht(DHTPIN, DHTTYPE);
 #define LDR_PIN 6
 
+// Deep Sleep-Wake-Up-Zeit (in Mikrosekunden)
+#define uS_TO_S_FACTOR 1000000  // Faktor zur Umrechnung von Sekunden in Mikrosekunden
+#define TIME_TO_SLEEP 60        // Schlafzeit in Sekunden
+
 /* Prepares the payload of the frame */
-static void prepareTxFrame( uint8_t port )
-{
-	/*appData size is LORAWAN_APP_DATA_MAX_SIZE which is defined in "commissioning.h".
+static void prepareTxFrame(uint8_t port) {
+  /*appData size is LORAWAN_APP_DATA_MAX_SIZE which is defined in "commissioning.h".
 	*appDataSize max value is LORAWAN_APP_DATA_MAX_SIZE.
 	*if enabled AT, don't modify LORAWAN_APP_DATA_MAX_SIZE, it may cause system hanging or failure.
 	*if disabled AT, LORAWAN_APP_DATA_MAX_SIZE can be modified, the max value is reference to lorawan region and SF.
 	*for example, if use REGION_CN470, 
 	*the max value for different DR can be found in MaxPayloadOfDatarateCN470 refer to DataratesCN470 and BandwidthsCN470 in "RegionCN470.h".
 	*/
-    float h = dht.readHumidity();
-    Serial.print("Humidity: ");
-    Serial.println(h);
+  float h = dht.readHumidity();
+  Serial.print("Humidity: ");
+  Serial.println(h);
 
-    // Read temperature as Celsius (the default)
-    float t = dht.readTemperature();
-    Serial.print("Temperature: ");
-    Serial.println(t);
+  // Read temperature as Celsius (the default)
+  float t = dht.readTemperature();
+  Serial.print("Temperature: ");
+  Serial.println(t);
 
-    //Read light level 
-    int l= analogRead(LDR_PIN);
-    Serial.println(l);
-    // Check if any reads failed and exit early (to try again).
-    if (isnan(h) || isnan(t)) {
-      Serial.println(F("Failed to read from DHT sensor!"));
-      return;
-    }
+  //Read light level
+  int l = analogRead(LDR_PIN);
+  Serial.println(l);
+  // Check if any reads failed and exit early (to try again).
+  if (isnan(h) || isnan(t)) {
+    Serial.println(F("Failed to read from DHT sensor!"));
+    return;
+  }
 
-    // JSON-Datenstruktur erstellen
-    StaticJsonDocument<200> jsonDoc;
-    jsonDoc["t"] = t;
-    jsonDoc["h"] = h;
-    jsonDoc["l"] = l;
+  // JSON-Datenstruktur erstellen
+  StaticJsonDocument<200> jsonDoc;
+  jsonDoc["t"] = t;
+  jsonDoc["h"] = h;
+  jsonDoc["l"] = l;
 
-    // JSON-Daten in einen String konvertieren
-    String jsonData;
-    serializeJson(jsonDoc, jsonData);
+  // JSON-Daten in einen String konvertieren
+  String jsonData;
+  serializeJson(jsonDoc, jsonData);
 
-    // Ausgabe der JSON-Daten über die serielle Schnittstelle
-    Serial.print("Sende JSON-Daten: ");
-    Serial.println(jsonData);
+  // Ausgabe der JSON-Daten über die serielle Schnittstelle
+  Serial.print("Sende JSON-Daten: ");
+  Serial.println(jsonData);
 
-    // JSON-String in Byte-Array konvertieren
-    int jsonLength = jsonData.length();
-    uint8_t payload[jsonLength];
-    jsonData.getBytes(payload, jsonLength + 1);
-    // Ausgabe des Byte-Arrays für Debug-Zwecke
-    appDataSize = jsonLength;
-    Serial.print("Byte-Array: ");
-    for (int i = 0; i < jsonLength; i++) {
-      Serial.print(payload[i], HEX);   // Ausgabe in Hexadezimal für bessere Lesbarkeit
-      Serial.print(" ");
-      appData[i] = payload[i];
-    }
+  // JSON-String in Byte-Array konvertieren
+  int jsonLength = jsonData.length();
+  uint8_t payload[jsonLength];
+  jsonData.getBytes(payload, jsonLength + 1);
+  // Ausgabe des Byte-Arrays für Debug-Zwecke
+  appDataSize = jsonLength;
+  Serial.print("Byte-Array: ");
+  for (int i = 0; i < jsonLength; i++) {
+    Serial.print(payload[i], HEX);  // Ausgabe in Hexadezimal für bessere Lesbarkeit
+    Serial.print(" ");
+    appData[i] = payload[i];
+  }
 }
 
 RTC_DATA_ATTR bool firstrun = true;
 
 void setup() {
   Serial.begin(115200);
-  Mcu.begin(HELTEC_BOARD,SLOW_CLK_TPYE);
+  Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
 
   dht.begin();
   //Set Pin-Mode for LDR sensor
   pinMode(LDR_PIN, INPUT);
-  if(firstrun)
-  {
+  if (firstrun) {
     LoRaWAN.displayMcuInit();
     firstrun = false;
   }
-
 }
 
-void loop()
-{
-	switch( deviceState )
-	{
-		case DEVICE_STATE_INIT:
-		{
-      #if(LORAWAN_DEVEUI_AUTO)
-            LoRaWAN.generateDeveuiByChipID();
-      #endif
-			LoRaWAN.init(loraWanClass,loraWanRegion);
-			//both set join DR and DR when ADR off 
-			LoRaWAN.setDefaultDR(3);
-			break;
-		}
-		case DEVICE_STATE_JOIN:
-		{
-			LoRaWAN.displayJoining();
-			LoRaWAN.join();
-			break;
-		}
-		case DEVICE_STATE_SEND:
-		{
-			LoRaWAN.displaySending();
-			prepareTxFrame( appPort );
-			LoRaWAN.send();
-			deviceState = DEVICE_STATE_CYCLE;
-			break;
-		}
-		case DEVICE_STATE_CYCLE:
-		{
-			// Schedule next packet transmission
-			txDutyCycleTime = appTxDutyCycle + randr( -APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE_RND );
-			LoRaWAN.cycle(txDutyCycleTime);
-			deviceState = DEVICE_STATE_SLEEP;
-			break;
-		}
-		case DEVICE_STATE_SLEEP:
-		{
-			LoRaWAN.displayAck();
-			LoRaWAN.sleep(loraWanClass);
-			break;
-		}
-		default:
-		{
-			deviceState = DEVICE_STATE_INIT;
-			break;
-		}
-	}
+void loop() {
+  switch (deviceState) {
+    case DEVICE_STATE_INIT:
+      {
+#if (LORAWAN_DEVEUI_AUTO)
+        LoRaWAN.generateDeveuiByChipID();
+#endif
+        LoRaWAN.init(loraWanClass, loraWanRegion);
+        //both set join DR and DR when ADR off
+        LoRaWAN.setDefaultDR(3);
+        break;
+      }
+    case DEVICE_STATE_JOIN:
+      {
+        LoRaWAN.displayJoining();
+        LoRaWAN.join();
+        break;
+      }
+    case DEVICE_STATE_SEND:
+      {
+        LoRaWAN.displaySending();
+        prepareTxFrame(appPort);
+        LoRaWAN.send();
+        deviceState = DEVICE_STATE_CYCLE;
+        break;
+      }
+    case DEVICE_STATE_CYCLE:
+      {
+        // Schedule next packet transmission
+        txDutyCycleTime = appTxDutyCycle + randr(-APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE_RND);
+        LoRaWAN.cycle(txDutyCycleTime);
+        deviceState = DEVICE_STATE_SLEEP;
+
+        // ESP32 in Deep Sleep versetzen
+        Serial.println("Gehe in Deep Sleep für 60 Sekunden...");
+        esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+        esp_deep_sleep_start();
+
+        break;
+      }
+    case DEVICE_STATE_SLEEP:
+      {
+        LoRaWAN.displayAck();
+        LoRaWAN.sleep(loraWanClass);
+        break;
+      }
+    default:
+      {
+        deviceState = DEVICE_STATE_INIT;
+        break;
+      }
+  }
 }
