@@ -7,7 +7,8 @@
 #include "DHT.h"
 
 /* OTAA para*/
-uint8_t devEui[] = { 0xa8, 0xb4, 0x3a, 0x20, 0x1e, 0x0f, 0xd1, 0xf6 };
+uint8_t devEui[] = { 0xc7, 0xe9, 0x19, 0x7d, 0x15, 0x68, 0x8c, 0x9d }; // Marvin Device	
+//uint8_t devEui[] = { 0xa8, 0xb4, 0x3a, 0x20, 0x1e, 0x0f, 0xd1, 0xf6 }; // heltec2 
 uint8_t appEui[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 uint8_t appKey[] = { 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x66, 0x01 };
 
@@ -66,6 +67,7 @@ uint8_t confirmedNbTrials = 4;
 #define DHTPIN 4
 #define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
+#define LDR_PIN 6
 
 /* Prepares the payload of the frame */
 static void prepareTxFrame( uint8_t port )
@@ -85,7 +87,10 @@ static void prepareTxFrame( uint8_t port )
     float t = dht.readTemperature();
     Serial.print("Temperature: ");
     Serial.println(t);
-   
+
+    //Read light level 
+    int l= analogRead(LDR_PIN);
+    Serial.println(l);
     // Check if any reads failed and exit early (to try again).
     if (isnan(h) || isnan(t)) {
       Serial.println(F("Failed to read from DHT sensor!"));
@@ -96,6 +101,7 @@ static void prepareTxFrame( uint8_t port )
     StaticJsonDocument<200> jsonDoc;
     jsonDoc["t"] = t;
     jsonDoc["h"] = h;
+    jsonDoc["l"] = l;
 
     // JSON-Daten in einen String konvertieren
     String jsonData;
@@ -126,7 +132,8 @@ void setup() {
   Mcu.begin(HELTEC_BOARD,SLOW_CLK_TPYE);
 
   dht.begin();
-
+  //Set Pin-Mode for LDR sensor
+  pinMode(LDR_PIN, INPUT);
   if(firstrun)
   {
     LoRaWAN.displayMcuInit();
