@@ -177,10 +177,10 @@ void loop() {
         LoRaWAN.cycle(txDutyCycleTime);
         deviceState = DEVICE_STATE_SLEEP;
 
-        // ESP32 in Deep Sleep versetzen
-        Serial.println("Gehe in Deep Sleep für 60 Sekunden...");
-        esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
-        esp_deep_sleep_start();
+        // // ESP32 in Deep Sleep versetzen
+        // Serial.println("Gehe in Deep Sleep für 60 Sekunden...");
+        // esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+        // esp_deep_sleep_start();
 
         break;
       }
